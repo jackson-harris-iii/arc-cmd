@@ -8,25 +8,35 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!window.arcCommandBridge) {
-      console.error('Arc Command bridge not available');
-      setLoading(false);
-      return;
-    }
-
-    loadSettings();
-    
-    const listener = (changes: Record<string, any>) => {
-      if (changes[STORAGE_KEY]) {
-        setSettings(changes[STORAGE_KEY].newValue as Settings);
+    // Wait for bridge to be available
+    const initSettings = async () => {
+      const maxWait = 5000;
+      const checkInterval = 100;
+      const startTime = Date.now();
+      
+      while (!window.arcCommandBridge && (Date.now() - startTime) < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
+      
+      if (!window.arcCommandBridge) {
+        console.error('Arc Command bridge not available');
+        setSettings({ arcMode: false, features: {} });
+        setLoading(false);
+        return;
+      }
+
+      await loadSettings();
+      
+      const listener = (changes: Record<string, any>) => {
+        if (changes[STORAGE_KEY]) {
+          setSettings(changes[STORAGE_KEY].newValue as Settings);
+        }
+      };
+      
+      window.arcCommandBridge.storageOnChanged.addListener(listener);
     };
     
-    window.arcCommandBridge.storageOnChanged.addListener(listener);
-    return () => {
-      // Note: Chrome storage listeners can't be easily removed, but this is fine
-      // as the component will unmount
-    };
+    initSettings();
   }, []);
 
   async function loadSettings() {

@@ -30,11 +30,20 @@ export let SHORTCUTS: Shortcut[] = [];
 export let SHORTCUT_CATEGORIES: ShortcutCategory[] = [];
 
 export async function loadShortcuts() {
+  // Wait for bridge to be available (with timeout)
+  const maxWait = 5000; // 5 seconds
+  const checkInterval = 100; // Check every 100ms
+  const startTime = Date.now();
+  
+  while (!window.arcCommandBridge && (Date.now() - startTime) < maxWait) {
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+  }
+  
+  if (!window.arcCommandBridge) {
+    throw new Error('Arc Command bridge not available after waiting');
+  }
+  
   try {
-    if (!window.arcCommandBridge) {
-      throw new Error('Arc Command bridge not available');
-    }
-    
     const data = await window.arcCommandBridge.loadShortcuts();
     SHORTCUTS = data.SHORTCUTS;
     SHORTCUT_CATEGORIES = data.SHORTCUT_CATEGORIES;

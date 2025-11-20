@@ -2,34 +2,126 @@ const STORAGE_KEY = "arcCommandSettings";
 const LOCAL_ACTIONS = new Set(["find", "copyUrl", "copyUrlMarkdown"]);
 let overlayLoaded = false;
 
+// Inject bridge into page context IMMEDIATELY
+// This must happen before the overlay loads
+injectBridgeIntoPage();
+
+// Create bridge in content script context
+createOverlayBridge();
+
 if (window.top === window.self) {
-  // Create bridge early so it's always available
-  createOverlayBridge();
   initArcCommandContent();
+}
+
+// Inject bridge into page context (where overlay runs)
+function injectBridgeIntoPage() {
+  // Check if already injected
+  if (document.getElementById('arc-command-bridge-injector')) {
+    return;
+  }
+
+  // Check if Chrome APIs are available
+  if (typeof chrome === 'undefined' || !chrome.runtime) {
+    console.warn('[Arc Command] Chrome APIs not available for bridge injection');
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.id = 'arc-command-bridge-injector';
+  script.src = chrome.runtime.getURL('bridge.js');
+  script.type = 'text/javascript';
+  
+  script.onerror = () => {
+    console.error('[Arc Command] Failed to load bridge script');
+  };
+  
+  // Inject at the very beginning of the document
+  if (document.documentElement) {
+    (document.documentElement || document.head || document.body).appendChild(script);
+  } else {
+    // If document isn't ready, wait for it
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        (document.documentElement || document.head || document.body).appendChild(script);
+      });
+    } else {
+      (document.head || document.body).appendChild(script);
+    }
+  }
 }
 
 // Create a bridge for the overlay to access Chrome APIs
 function createOverlayBridge() {
-  if (window.arcCommandBridge) return;
+  // Check if bridge already exists and is valid
+  if (window.arcCommandBridge && typeof window.arcCommandBridge === 'object' && typeof window.arcCommandBridge.sendMessage === 'function') {
+    return;
+  }
   
-  window.arcCommandBridge = {
+  // Check if we're in a context where chrome APIs are available
+  if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.storage) {
+    console.warn('[Arc Command] Chrome APIs not available in this context');
+    // Still create a placeholder bridge so overlay doesn't wait forever
+    window.arcCommandBridge = {
+      getURL: () => { throw new Error('Chrome API not available'); },
+      storageGet: async () => { throw new Error('Chrome API not available'); },
+      storageSet: async () => { throw new Error('Chrome API not available'); },
+      storageOnChanged: { addListener: () => {}, removeListener: () => {} },
+      sendMessage: async () => { throw new Error('Chrome API not available'); },
+      loadShortcuts: async () => { throw new Error('Chrome API not available'); }
+    };
+    return;
+  }
+  
+  try {
+    // Create bridge in both content script context and page context
+    const bridge = {
     // Proxy for chrome.runtime.getURL
-    getURL: (path) => chrome.runtime.getURL(path),
+    getURL: (path) => {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.runtime) {
+        throw new Error('Chrome runtime API not available');
+      }
+      return chrome.runtime.getURL(path);
+    },
     
     // Proxy for chrome.storage.sync.get
     storageGet: async (key) => {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.storage) {
+        throw new Error('Chrome storage API not available');
+      }
+      if (!chrome.storage.sync) {
+        throw new Error('Chrome storage sync API not available');
+      }
       const data = await chrome.storage.sync.get(key);
       return data;
     },
     
     // Proxy for chrome.storage.sync.set
     storageSet: async (data) => {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.storage) {
+        throw new Error('Chrome storage API not available');
+      }
+      if (!chrome.storage.sync) {
+        throw new Error('Chrome storage sync API not available');
+      }
       await chrome.storage.sync.set(data);
     },
     
     // Proxy for chrome.storage.onChanged
     storageOnChanged: {
       addListener: (callback) => {
+        if (typeof chrome === 'undefined' || !chrome.storage) {
+          console.warn('Chrome storage API not available for listener');
+          return;
+        }
         chrome.storage.onChanged.addListener((changes, area) => {
           if (area === "sync") {
             callback(changes);
@@ -44,21 +136,64 @@ function createOverlayBridge() {
     
     // Proxy for chrome.runtime.sendMessage
     sendMessage: async (message) => {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.runtime) {
+        throw new Error('Chrome runtime API not available');
+      }
+      if (typeof chrome.runtime.sendMessage !== 'function') {
+        throw new Error('Chrome runtime sendMessage API not available');
+      }
       return await chrome.runtime.sendMessage(message);
     },
     
     // Load shortcuts module
     loadShortcuts: async () => {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.runtime) {
+        throw new Error('Chrome runtime API not available');
+      }
       const shortcutsModule = await import(chrome.runtime.getURL("shortcuts.js"));
       return {
         SHORTCUTS: shortcutsModule.SHORTCUTS,
         SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
       };
     }
-  };
+    };
+    
+    // Set bridge in window - this should be accessible to page context
+    // Content script and page share the same window object for the main frame
+    window.arcCommandBridge = bridge;
+    
+    // Mark bridge as ready
+    window.arcCommandBridgeReady = true;
+    
+    console.log('[Arc Command] Bridge created successfully');
+    
+  } catch (error) {
+    console.error('[Arc Command] Failed to create overlay bridge', error);
+    // Create a placeholder bridge so overlay doesn't wait forever
+    window.arcCommandBridge = {
+      getURL: () => { throw new Error('Bridge creation failed'); },
+      storageGet: async () => { throw new Error('Bridge creation failed'); },
+      storageSet: async () => { throw new Error('Bridge creation failed'); },
+      storageOnChanged: { addListener: () => {}, removeListener: () => {} },
+      sendMessage: async () => { throw new Error('Bridge creation failed'); },
+      loadShortcuts: async () => { throw new Error('Bridge creation failed'); }
+    };
+  }
 }
 
 async function initArcCommandContent() {
+  // Ensure Chrome APIs are available
+  if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.storage) {
+    console.warn('Chrome APIs not available, skipping Arc Command initialization');
+    return;
+  }
+
   const {
     SHORTCUTS,
     normalizeCombo,
@@ -71,15 +206,81 @@ async function initArcCommandContent() {
 
   settings = await loadSettings(settings);
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync" && changes[STORAGE_KEY]) {
-      settings = mergeSettings(changes[STORAGE_KEY].newValue, settings);
-    }
-  });
+  if (chrome.storage) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "sync") {
+        if (changes[STORAGE_KEY]) {
+          settings = mergeSettings(changes[STORAGE_KEY].newValue, settings);
+        }
+        // Notify page context of storage changes
+        window.postMessage({
+          type: 'arc-cmd:storage-changed',
+          changes
+        }, '*');
+      }
+    });
+  }
 
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message?.type === "pageAction") {
-      handleLocalAction(message.actionId);
+  if (chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === "pageAction") {
+        handleLocalAction(message.actionId);
+      }
+    });
+  }
+
+  // Handle bridge requests from page context
+  window.addEventListener('message', async (event) => {
+    // Only handle messages from same window
+    if (event.source !== window) return;
+    
+    if (event.data && event.data.type === 'arc-cmd:bridge-request') {
+      const { id, method, args } = event.data;
+      
+      try {
+        let result;
+        switch (method) {
+          case 'storageGet':
+            result = await chrome.storage.sync.get(args[0]);
+            break;
+          case 'storageSet':
+            await chrome.storage.sync.set(args[0]);
+            result = undefined;
+            break;
+          case 'sendMessage':
+            result = await new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage(args[0], (response) => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else {
+                  resolve(response);
+                }
+              });
+            });
+            break;
+          case 'loadShortcuts':
+            const shortcutsModule = await import(chrome.runtime.getURL('shortcuts.js'));
+            result = {
+              SHORTCUTS: shortcutsModule.SHORTCUTS,
+              SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
+            };
+            break;
+          default:
+            throw new Error(`Unknown bridge method: ${method}`);
+        }
+        
+        window.postMessage({
+          type: 'arc-cmd:bridge-response',
+          id,
+          result
+        }, '*');
+      } catch (error) {
+        window.postMessage({
+          type: 'arc-cmd:bridge-response',
+          id,
+          error: error.message
+        }, '*');
+      }
     }
   });
 
@@ -89,14 +290,16 @@ async function initArcCommandContent() {
   }
 
   // Watch for Arc mode changes to load/unload overlay
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync" && changes[STORAGE_KEY]) {
-      const newSettings = mergeSettings(changes[STORAGE_KEY].newValue, settings);
-      if (newSettings.arcMode && !overlayLoaded) {
-        loadOverlay();
+  if (chrome.storage) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "sync" && changes[STORAGE_KEY]) {
+        const newSettings = mergeSettings(changes[STORAGE_KEY].newValue, settings);
+        if (newSettings.arcMode && !overlayLoaded) {
+          loadOverlay();
+        }
       }
-    }
-  });
+    });
+  }
 
   window.addEventListener(
     "keydown",
@@ -137,68 +340,25 @@ async function initArcCommandContent() {
       }
 
       try {
-        await chrome.runtime.sendMessage({
-          type: "arc-cmd:perform",
-          actionId: shortcut.action,
-          shortcutId: shortcut.id,
-          shortcutData: shortcut
-        });
+        if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+          await chrome.runtime.sendMessage({
+            type: "arc-cmd:perform",
+            actionId: shortcut.action,
+            shortcutId: shortcut.id,
+            shortcutData: shortcut
+          });
+        } else {
+          console.warn("Chrome runtime API not available for sending message");
+        }
       } catch (error) {
-        console.warn("Arc Command dispatch failed", error);
+        // Only log if it's not a "Chrome API not available" type error
+        if (error && error.message && !error.message.includes('not available')) {
+          console.warn("Arc Command dispatch failed", error);
+        }
       }
     },
     true
   );
-}
-
-// Create a bridge for the overlay to access Chrome APIs
-function createOverlayBridge() {
-  if (window.arcCommandBridge) return;
-  
-  window.arcCommandBridge = {
-    // Proxy for chrome.runtime.getURL
-    getURL: (path) => chrome.runtime.getURL(path),
-    
-    // Proxy for chrome.storage.sync.get
-    storageGet: async (key) => {
-      const data = await chrome.storage.sync.get(key);
-      return data;
-    },
-    
-    // Proxy for chrome.storage.sync.set
-    storageSet: async (data) => {
-      await chrome.storage.sync.set(data);
-    },
-    
-    // Proxy for chrome.storage.onChanged
-    storageOnChanged: {
-      addListener: (callback) => {
-        chrome.storage.onChanged.addListener((changes, area) => {
-          if (area === "sync") {
-            callback(changes);
-          }
-        });
-      },
-      removeListener: (callback) => {
-        // Note: Chrome doesn't support removing specific listeners easily
-        // This is a limitation, but shouldn't cause issues in practice
-      }
-    },
-    
-    // Proxy for chrome.runtime.sendMessage
-    sendMessage: async (message) => {
-      return await chrome.runtime.sendMessage(message);
-    },
-    
-    // Load shortcuts module
-    loadShortcuts: async () => {
-      const shortcutsModule = await import(chrome.runtime.getURL("shortcuts.js"));
-      return {
-        SHORTCUTS: shortcutsModule.SHORTCUTS,
-        SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
-      };
-    }
-  };
 }
 
 async function loadOverlay() {
@@ -217,15 +377,26 @@ async function loadOverlay() {
       return;
     }
 
-    // Bridge should already be created, but ensure it exists
+    // Ensure bridge exists before loading overlay
     if (!window.arcCommandBridge) {
       createOverlayBridge();
     }
+    
+    // Wait a bit to ensure bridge is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    if (!window.arcCommandBridge) {
+      console.error('Failed to create overlay bridge');
+      return;
+    }
+
+    // Use bridge to get URLs (safer than direct Chrome API access)
+    const bridge = window.arcCommandBridge;
 
     // Load overlay CSS
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = chrome.runtime.getURL("overlay-dist/overlay.css");
+    link.href = bridge.getURL("overlay-dist/overlay.css");
     link.id = "arc-overlay-stylesheet";
     if (!document.getElementById("arc-overlay-stylesheet")) {
       document.head.appendChild(link);
@@ -234,7 +405,7 @@ async function loadOverlay() {
     // Load overlay JS
     const script = document.createElement("script");
     script.type = "module";
-    script.src = chrome.runtime.getURL("overlay-dist/overlay.js");
+    script.src = bridge.getURL("overlay-dist/overlay.js");
     script.id = "arc-overlay-script";
     script.onload = () => {
       overlayLoaded = true;
@@ -292,6 +463,9 @@ function eventToComboKey(event, normalizeCombo) {
 }
 
 async function loadSettings(fallback) {
+  if (!chrome.storage || !chrome.storage.sync) {
+    return fallback || { arcMode: false, features: {} };
+  }
   const data = await chrome.storage.sync.get(STORAGE_KEY);
   return mergeSettings(data[STORAGE_KEY], fallback);
 }
