@@ -1,0 +1,79 @@
+.arc-tab-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+  gap: 12px;
+}
+
+.arc-tab-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.arc-tab-row-highlighted {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.arc-tab-row-active {
+  border-left: 3px solid #10b981;
+}
+
+.arc-tab-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arc-tab-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.arc-tab-icon-placeholder {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.arc-tab-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arc-tab-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arc-tab-url {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arc-tab-active-indicator {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 500;
+  padding: 2px 8px;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+

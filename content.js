@@ -265,6 +265,36 @@ async function initArcCommandContent() {
               SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
             };
             break;
+          case 'getTabs':
+            // Get all tabs in current window, sorted by lastAccessed
+            const tabs = await chrome.tabs.query({ currentWindow: true });
+            result = tabs
+              .map(tab => ({
+                id: tab.id,
+                title: tab.title,
+                url: tab.url,
+                favIconUrl: tab.favIconUrl,
+                active: tab.active,
+                lastAccessed: tab.lastAccessed || 0
+              }))
+              .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+            break;
+          case 'activateTab':
+            await chrome.tabs.update(args[0], { active: true });
+            result = undefined;
+            break;
+          case 'createTab':
+            // If URL looks like a URL, use it directly, otherwise search
+            const url = args[0];
+            const isUrl = /^(https?:\/\/|chrome:\/\/|about:|file:\/\/)/i.test(url);
+            if (isUrl) {
+              await chrome.tabs.create({ url });
+            } else {
+              // Treat as search query
+              await chrome.tabs.create({ url: `https://www.google.com/search?q=${encodeURIComponent(url)}` });
+            }
+            result = undefined;
+            break;
           default:
             throw new Error(`Unknown bridge method: ${method}`);
         }

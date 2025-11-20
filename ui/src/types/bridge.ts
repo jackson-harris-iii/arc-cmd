@@ -1,5 +1,14 @@
 import type { Shortcut, ShortcutCategory } from '../types';
 
+export interface Tab {
+  id?: number;
+  title?: string;
+  url?: string;
+  favIconUrl?: string;
+  active?: boolean;
+  lastAccessed?: number;
+}
+
 export interface ArcCommandBridge {
   getURL: (path: string) => string;
   storageGet: (key: string) => Promise<Record<string, any>>;
@@ -13,6 +22,9 @@ export interface ArcCommandBridge {
     SHORTCUTS: Shortcut[];
     SHORTCUT_CATEGORIES: ShortcutCategory[];
   }>;
+  getTabs: () => Promise<Tab[]>;
+  activateTab: (tabId: number) => Promise<void>;
+  createTab: (url: string) => Promise<void>;
 }
 
 declare global {

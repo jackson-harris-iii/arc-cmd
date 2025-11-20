@@ -195,6 +195,73 @@
           reject(new Error('Bridge request timeout'));
         }, 5000);
       });
+    },
+    
+    getTabs: async function() {
+      // Use postMessage to content script (tabs API not available in page context)
+      return new Promise((resolve, reject) => {
+        const id = Math.random().toString(36);
+        const handler = (event) => {
+          if (event.data && event.data.type === 'arc-cmd:bridge-response' && event.data.id === id) {
+            window.removeEventListener('message', handler);
+            if (event.data.error) {
+              reject(new Error(event.data.error));
+            } else {
+              resolve(event.data.result);
+            }
+          }
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ type: 'arc-cmd:bridge-request', id, method: 'getTabs', args: [] }, '*');
+        setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Bridge request timeout'));
+        }, 5000);
+      });
+    },
+    
+    activateTab: async function(tabId) {
+      return new Promise((resolve, reject) => {
+        const id = Math.random().toString(36);
+        const handler = (event) => {
+          if (event.data && event.data.type === 'arc-cmd:bridge-response' && event.data.id === id) {
+            window.removeEventListener('message', handler);
+            if (event.data.error) {
+              reject(new Error(event.data.error));
+            } else {
+              resolve(event.data.result);
+            }
+          }
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ type: 'arc-cmd:bridge-request', id, method: 'activateTab', args: [tabId] }, '*');
+        setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Bridge request timeout'));
+        }, 5000);
+      });
+    },
+    
+    createTab: async function(url) {
+      return new Promise((resolve, reject) => {
+        const id = Math.random().toString(36);
+        const handler = (event) => {
+          if (event.data && event.data.type === 'arc-cmd:bridge-response' && event.data.id === id) {
+            window.removeEventListener('message', handler);
+            if (event.data.error) {
+              reject(new Error(event.data.error));
+            } else {
+              resolve(event.data.result);
+            }
+          }
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ type: 'arc-cmd:bridge-request', id, method: 'createTab', args: [url] }, '*');
+        setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Bridge request timeout'));
+        }, 5000);
+      });
     }
   };
   
