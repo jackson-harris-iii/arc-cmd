@@ -9,8 +9,9 @@
   transition: background 0.15s;
 }
 
-.arc-shortcut-row:hover {
-  background: rgba(255, 255, 255, 0.05);
+.arc-shortcut-row:hover,
+.arc-shortcut-row.arc-shortcut-highlighted {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .arc-shortcut-row.arc-shortcut-disabled {

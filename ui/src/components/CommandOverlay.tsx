@@ -15,11 +15,14 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
   const { settings, setFeature, triggerShortcut } = useSettings();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     searchInputRef.current?.focus();
-  }, []);
+    setHighlightedIndex(0);
+  }, [searchQuery, selectedCategory]);
 
   const filteredShortcuts = useMemo(() => {
     let filtered = shortcuts;
@@ -40,9 +43,34 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
     return filtered;
   }, [shortcuts, selectedCategory, searchQuery]);
 
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (contentRef.current && highlightedIndex >= 0) {
+      const items = contentRef.current.querySelectorAll('.arc-shortcut-row');
+      const item = items[highlightedIndex] as HTMLElement;
+      if (item) {
+        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [highlightedIndex]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => 
+        prev < filteredShortcuts.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter' && settings) {
+      const shortcut = filteredShortcuts[highlightedIndex];
+      if (shortcut && settings.features[shortcut.id] !== false) {
+        triggerShortcut(shortcut.action, shortcut.id, shortcut);
+        onClose();
+      }
     }
   };
 
@@ -77,20 +105,22 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
           onSelectCategory={setSelectedCategory}
         />
 
-        <div className="arc-overlay-content">
+        <div className="arc-overlay-content" ref={contentRef}>
           {filteredShortcuts.length === 0 ? (
             <div className="arc-overlay-empty">No shortcuts found</div>
           ) : (
-            filteredShortcuts.map((shortcut) => (
+            filteredShortcuts.map((shortcut, index) => (
               <ShortcutRow
                 key={shortcut.id}
                 shortcut={shortcut}
                 enabled={settings.features[shortcut.id] !== false}
+                highlighted={index === highlightedIndex}
                 onToggle={(enabled) => setFeature(shortcut.id, enabled)}
                 onTrigger={() => {
                   triggerShortcut(shortcut.action, shortcut.id, shortcut);
                   onClose();
                 }}
+                onMouseEnter={() => setHighlightedIndex(index)}
               />
             ))
           )}

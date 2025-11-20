@@ -102,26 +102,46 @@ async function initArcCommandContent() {
 async function loadOverlay() {
   if (overlayLoaded) return;
   
+  // Wait for document to be ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => loadOverlay());
+    return;
+  }
+  
   try {
+    // Check if already loaded
+    if (document.getElementById("arc-overlay-root")) {
+      overlayLoaded = true;
+      return;
+    }
+
     // Load overlay CSS
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = chrome.runtime.getURL("overlay-dist/overlay.css");
-    document.head.appendChild(link);
+    link.id = "arc-overlay-stylesheet";
+    if (!document.getElementById("arc-overlay-stylesheet")) {
+      document.head.appendChild(link);
+    }
 
     // Load overlay JS
     const script = document.createElement("script");
     script.type = "module";
     script.src = chrome.runtime.getURL("overlay-dist/overlay.js");
+    script.id = "arc-overlay-script";
     script.onload = () => {
       overlayLoaded = true;
     };
     script.onerror = (error) => {
       console.error("Failed to load overlay", error);
+      overlayLoaded = false;
     };
-    document.head.appendChild(script);
+    if (!document.getElementById("arc-overlay-script")) {
+      document.head.appendChild(script);
+    }
   } catch (error) {
     console.error("Failed to load overlay", error);
+    overlayLoaded = false;
   }
 }
 

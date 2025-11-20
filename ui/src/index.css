@@ -18,8 +18,14 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 2147483647;
+  isolation: isolate;
 }
 
 #arc-overlay-root > * {
   pointer-events: all;
+}
+
+/* Prevent page styles from affecting overlay */
+#arc-overlay-root * {
+  box-sizing: border-box;
 }
