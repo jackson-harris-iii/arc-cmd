@@ -3,7 +3,59 @@ const LOCAL_ACTIONS = new Set(["find", "copyUrl", "copyUrlMarkdown"]);
 let overlayLoaded = false;
 
 if (window.top === window.self) {
+  // Create bridge early so it's always available
+  createOverlayBridge();
   initArcCommandContent();
+}
+
+// Create a bridge for the overlay to access Chrome APIs
+function createOverlayBridge() {
+  if (window.arcCommandBridge) return;
+  
+  window.arcCommandBridge = {
+    // Proxy for chrome.runtime.getURL
+    getURL: (path) => chrome.runtime.getURL(path),
+    
+    // Proxy for chrome.storage.sync.get
+    storageGet: async (key) => {
+      const data = await chrome.storage.sync.get(key);
+      return data;
+    },
+    
+    // Proxy for chrome.storage.sync.set
+    storageSet: async (data) => {
+      await chrome.storage.sync.set(data);
+    },
+    
+    // Proxy for chrome.storage.onChanged
+    storageOnChanged: {
+      addListener: (callback) => {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === "sync") {
+            callback(changes);
+          }
+        });
+      },
+      removeListener: (callback) => {
+        // Note: Chrome doesn't support removing specific listeners easily
+        // This is a limitation, but shouldn't cause issues in practice
+      }
+    },
+    
+    // Proxy for chrome.runtime.sendMessage
+    sendMessage: async (message) => {
+      return await chrome.runtime.sendMessage(message);
+    },
+    
+    // Load shortcuts module
+    loadShortcuts: async () => {
+      const shortcutsModule = await import(chrome.runtime.getURL("shortcuts.js"));
+      return {
+        SHORTCUTS: shortcutsModule.SHORTCUTS,
+        SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
+      };
+    }
+  };
 }
 
 async function initArcCommandContent() {
@@ -99,6 +151,56 @@ async function initArcCommandContent() {
   );
 }
 
+// Create a bridge for the overlay to access Chrome APIs
+function createOverlayBridge() {
+  if (window.arcCommandBridge) return;
+  
+  window.arcCommandBridge = {
+    // Proxy for chrome.runtime.getURL
+    getURL: (path) => chrome.runtime.getURL(path),
+    
+    // Proxy for chrome.storage.sync.get
+    storageGet: async (key) => {
+      const data = await chrome.storage.sync.get(key);
+      return data;
+    },
+    
+    // Proxy for chrome.storage.sync.set
+    storageSet: async (data) => {
+      await chrome.storage.sync.set(data);
+    },
+    
+    // Proxy for chrome.storage.onChanged
+    storageOnChanged: {
+      addListener: (callback) => {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === "sync") {
+            callback(changes);
+          }
+        });
+      },
+      removeListener: (callback) => {
+        // Note: Chrome doesn't support removing specific listeners easily
+        // This is a limitation, but shouldn't cause issues in practice
+      }
+    },
+    
+    // Proxy for chrome.runtime.sendMessage
+    sendMessage: async (message) => {
+      return await chrome.runtime.sendMessage(message);
+    },
+    
+    // Load shortcuts module
+    loadShortcuts: async () => {
+      const shortcutsModule = await import(chrome.runtime.getURL("shortcuts.js"));
+      return {
+        SHORTCUTS: shortcutsModule.SHORTCUTS,
+        SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
+      };
+    }
+  };
+}
+
 async function loadOverlay() {
   if (overlayLoaded) return;
   
@@ -113,6 +215,11 @@ async function loadOverlay() {
     if (document.getElementById("arc-overlay-root")) {
       overlayLoaded = true;
       return;
+    }
+
+    // Bridge should already be created, but ensure it exists
+    if (!window.arcCommandBridge) {
+      createOverlayBridge();
     }
 
     // Load overlay CSS

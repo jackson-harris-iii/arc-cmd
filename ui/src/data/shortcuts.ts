@@ -1,3 +1,5 @@
+import '../types/bridge';
+
 // This will be loaded dynamically from the extension's shortcuts.js
 // For now, we'll define a minimal type-safe interface
 
@@ -29,13 +31,16 @@ export let SHORTCUT_CATEGORIES: ShortcutCategory[] = [];
 
 export async function loadShortcuts() {
   try {
-    const shortcutsModule = await import(
-      chrome.runtime.getURL('shortcuts.js')
-    );
-    SHORTCUTS = shortcutsModule.SHORTCUTS;
-    SHORTCUT_CATEGORIES = shortcutsModule.SHORTCUT_CATEGORIES;
+    if (!window.arcCommandBridge) {
+      throw new Error('Arc Command bridge not available');
+    }
+    
+    const data = await window.arcCommandBridge.loadShortcuts();
+    SHORTCUTS = data.SHORTCUTS;
+    SHORTCUT_CATEGORIES = data.SHORTCUT_CATEGORIES;
   } catch (error) {
     console.error('Failed to load shortcuts', error);
+    throw error;
   }
 }
 

@@ -8,21 +8,36 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!window.arcCommandBridge) {
+      console.error('Arc Command bridge not available');
+      setLoading(false);
+      return;
+    }
+
     loadSettings();
     
-    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+    const listener = (changes: Record<string, any>) => {
       if (changes[STORAGE_KEY]) {
         setSettings(changes[STORAGE_KEY].newValue as Settings);
       }
     };
     
-    chrome.storage.onChanged.addListener(listener);
-    return () => chrome.storage.onChanged.removeListener(listener);
+    window.arcCommandBridge.storageOnChanged.addListener(listener);
+    return () => {
+      // Note: Chrome storage listeners can't be easily removed, but this is fine
+      // as the component will unmount
+    };
   }, []);
 
   async function loadSettings() {
+    if (!window.arcCommandBridge) {
+      setSettings({ arcMode: false, features: {} });
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await chrome.storage.sync.get(STORAGE_KEY);
+      const data = await window.arcCommandBridge.storageGet(STORAGE_KEY);
       const raw = data[STORAGE_KEY] as Settings | undefined;
       const settings: Settings = raw && typeof raw === 'object' && 'arcMode' in raw
         ? raw
@@ -37,8 +52,10 @@ export function useSettings() {
   }
 
   async function setArcMode(enabled: boolean) {
+    if (!window.arcCommandBridge) return;
+    
     try {
-      await chrome.runtime.sendMessage({
+      await window.arcCommandBridge.sendMessage({
         type: 'arc-cmd:set-arc-mode',
         arcMode: enabled,
       });
@@ -48,8 +65,10 @@ export function useSettings() {
   }
 
   async function setFeature(shortcutId: string, enabled: boolean) {
+    if (!window.arcCommandBridge) return;
+    
     try {
-      await chrome.runtime.sendMessage({
+      await window.arcCommandBridge.sendMessage({
         type: 'arc-cmd:set-feature',
         shortcutId,
         enabled,
@@ -60,8 +79,10 @@ export function useSettings() {
   }
 
   async function triggerShortcut(actionId: string, shortcutId: string, shortcutData: any) {
+    if (!window.arcCommandBridge) return;
+    
     try {
-      await chrome.runtime.sendMessage({
+      await window.arcCommandBridge.sendMessage({
         type: 'arc-cmd:perform',
         actionId,
         shortcutId,
