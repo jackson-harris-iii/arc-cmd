@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "Arc Command",
+  "description": "Mimic Arc Browser command shortcuts inside Chrome with a single toggle.",
+  "version": "0.1.0",
+  "permissions": [
+    "storage",
+    "tabs",
+    "windows",
+    "history",
+    "sessions",
+    "activeTab",
+    "clipboardWrite",
+    "notifications"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Arc Command",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "type": "module",
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "styles.css",
+        "shortcuts.js",
+        "overlay-dist/overlay.js",
+        "overlay-dist/overlay.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
+
+

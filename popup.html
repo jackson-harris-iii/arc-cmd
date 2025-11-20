@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arc Command</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+    }
+
+    .popup {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .status {
+      font-size: 0.95rem;
+      color: var(--subtle);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="popup">
+    <h2>Arc Command</h2>
+    <label class="toggle">
+      <span>Arc Mode</span>
+      <input type="checkbox" id="popup-toggle" />
+    </label>
+    <span class="status" id="status-text">Loading status…</span>
+    <button class="button" id="open-options">Open Settings</button>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+
+</html>
+

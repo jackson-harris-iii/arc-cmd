@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arc Command Settings</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+      <header class="header">
+        <div class="title-block">
+          <h1>Arc Command Mode</h1>
+          <p>Toggle Arc keyboard mappings and customize shortcuts.</p>
+        </div>
+        <label class="toggle">
+          <span>Arc Mode</span>
+          <input type="checkbox" id="arc-mode-toggle" />
+        </label>
+      </header>
+      <hr class="divider" />
+      <div id="shortcut-groups" data-shortcut-list></div>
+      <div class="options-footer">
+        <span>Need help? View the full shortcut reference from Arc.</span>
+        <a class="button-link" href="https://resources.arc.net/hc/en-us/articles/20595231349911-Keyboard-Shortcuts"
+          target="_blank" rel="noreferrer">Arc Shortcut Guide ↗</a>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+
+</html>
+
