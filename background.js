@@ -4,6 +4,14 @@ const STORAGE_KEY = "arcCommandSettings";
 const recentTabs = new Map();
 let cachedSettings = null;
 
+// Ensure chrome.tabs is available (should always be in background script)
+console.log('[Arc Command] Background script loaded');
+console.log('[Arc Command] chrome available:', typeof chrome !== 'undefined');
+console.log('[Arc Command] chrome.tabs available:', typeof chrome !== 'undefined' && typeof chrome.tabs !== 'undefined');
+if (typeof chrome === 'undefined' || !chrome.tabs) {
+  console.error('[Arc Command] chrome.tabs API not available in background script!');
+}
+
 function cloneDefaults() {
   return createDefaultSettings();
 }
@@ -80,6 +88,8 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const { type } = message || {};
+  console.log('[Arc Command] Background: Received message type:', type);
+  
   if (type === "arc-cmd:perform") {
     handleAction(message.actionId, {
       shortcutId: message.shortcutId,
@@ -108,6 +118,90 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }));
     sendResponse({ ok: true });
+    return true;
+  }
+  if (type === "arc-cmd:get-tabs") {
+    // Get all tabs in current window, sorted by lastAccessed
+    try {
+      if (typeof chrome === 'undefined') {
+        throw new Error('Chrome API not available');
+      }
+      if (!chrome.tabs) {
+        throw new Error('chrome.tabs API not available');
+      }
+      if (typeof chrome.tabs.query !== 'function') {
+        throw new Error('chrome.tabs.query is not a function');
+      }
+      
+      console.log('[Arc Command] Background: Fetching tabs...');
+      chrome.tabs.query({ currentWindow: true })
+        .then((tabs) => {
+          console.log('[Arc Command] Background: Found', tabs.length, 'tabs');
+          const result = tabs
+            .map(tab => ({
+              id: tab.id,
+              title: tab.title || 'Untitled',
+              url: tab.url || '',
+              favIconUrl: tab.favIconUrl || undefined,
+              active: tab.active || false,
+              lastAccessed: tab.lastAccessed || tab.id || 0
+            }))
+            .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+          console.log('[Arc Command] Background: Returning', result.length, 'sorted tabs');
+          sendResponse({ tabs: result });
+        })
+        .catch((error) => {
+          console.error('[Arc Command] Background: Error in get-tabs promise:', error);
+          sendResponse({ error: error.message || 'Failed to get tabs' });
+        });
+    } catch (error) {
+      console.error('[Arc Command] Background: Error in get-tabs handler:', error);
+      sendResponse({ error: error.message || 'Failed to get tabs' });
+    }
+    return true; // Keep channel open for async response
+  }
+  if (type === "arc-cmd:activate-tab") {
+    try {
+      if (typeof chrome === 'undefined' || !chrome.tabs) {
+        throw new Error('chrome.tabs API not available');
+      }
+      if (typeof chrome.tabs.update !== 'function') {
+        throw new Error('chrome.tabs.update is not a function');
+      }
+      chrome.tabs.update(message.tabId, { active: true })
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => {
+          console.error('[Arc Command] Error activating tab:', error);
+          sendResponse({ error: error.message || 'Failed to activate tab' });
+        });
+    } catch (error) {
+      console.error('[Arc Command] Error in activate-tab handler:', error);
+      sendResponse({ error: error.message || 'Failed to activate tab' });
+    }
+    return true;
+  }
+  if (type === "arc-cmd:create-tab") {
+    try {
+      if (typeof chrome === 'undefined' || !chrome.tabs) {
+        throw new Error('chrome.tabs API not available');
+      }
+      if (typeof chrome.tabs.create !== 'function') {
+        throw new Error('chrome.tabs.create is not a function');
+      }
+      const url = message.url;
+      // If URL looks like a URL, use it directly, otherwise search
+      const isUrl = /^(https?:\/\/|chrome:\/\/|about:|file:\/\/)/i.test(url);
+      const tabUrl = isUrl ? url : `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+      chrome.tabs.create({ url: tabUrl })
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => {
+          console.error('[Arc Command] Error creating tab:', error);
+          sendResponse({ error: error.message || 'Failed to create tab' });
+        });
+    } catch (error) {
+      console.error('[Arc Command] Error in create-tab handler:', error);
+      sendResponse({ error: error.message || 'Failed to create tab' });
+    }
     return true;
   }
   return false;

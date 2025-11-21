@@ -9,8 +9,140 @@ injectBridgeIntoPage();
 // Create bridge in content script context
 createOverlayBridge();
 
+// Set up bridge message handler IMMEDIATELY (before overlay loads)
+setupBridgeMessageHandler();
+
 if (window.top === window.self) {
   initArcCommandContent();
+}
+
+// Handle bridge requests from page context
+// This must be set up before the overlay tries to use it
+function setupBridgeMessageHandler() {
+  if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.storage) {
+    console.warn('[Arc Command] Chrome APIs not available for bridge handler');
+    return;
+  }
+
+  // Prevent duplicate listeners
+  if (window._arcCommandBridgeHandlerSetup) {
+    return;
+  }
+  window._arcCommandBridgeHandlerSetup = true;
+
+  window.addEventListener('message', async (event) => {
+    // Only handle messages from same window
+    if (event.source !== window) return;
+    
+    if (event.data && event.data.type === 'arc-cmd:bridge-request') {
+      console.log('[Arc Command] Received bridge request:', event.data.method);
+      const { id, method, args } = event.data;
+      
+      try {
+        let result;
+        switch (method) {
+          case 'storageGet':
+            result = await chrome.storage.sync.get(args[0]);
+            break;
+          case 'storageSet':
+            await chrome.storage.sync.set(args[0]);
+            result = undefined;
+            break;
+          case 'sendMessage':
+            result = await new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage(args[0], (response) => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else {
+                  resolve(response);
+                }
+              });
+            });
+            break;
+          case 'loadShortcuts':
+            const shortcutsModule = await import(chrome.runtime.getURL('shortcuts.js'));
+            result = {
+              SHORTCUTS: shortcutsModule.SHORTCUTS,
+              SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
+            };
+            break;
+          case 'getTabs':
+            // Content scripts can't access chrome.tabs, forward to background script
+            try {
+              console.log('[Arc Command] Fetching tabs via background...');
+              result = await new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage(
+                  { type: 'arc-cmd:get-tabs' },
+                  (response) => {
+                    if (chrome.runtime.lastError) {
+                      reject(new Error(chrome.runtime.lastError.message));
+                    } else if (response && response.error) {
+                      reject(new Error(response.error));
+                    } else {
+                      resolve(response?.tabs || []);
+                    }
+                  }
+                );
+              });
+              console.log('[Arc Command] Received tabs from background:', Array.isArray(result) ? result.length : 0);
+            } catch (error) {
+              console.error('[Arc Command] Error fetching tabs:', error);
+              throw error;
+            }
+            break;
+          case 'activateTab':
+            // Forward to background script
+            await new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage(
+                { type: 'arc-cmd:activate-tab', tabId: args[0] },
+                (response) => {
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                  } else {
+                    resolve(response);
+                  }
+                }
+              );
+            });
+            result = undefined;
+            break;
+          case 'createTab':
+            // Forward to background script
+            const url = args[0];
+            await new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage(
+                { type: 'arc-cmd:create-tab', url },
+                (response) => {
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                  } else {
+                    resolve(response);
+                  }
+                }
+              );
+            });
+            result = undefined;
+            break;
+          default:
+            throw new Error(`Unknown bridge method: ${method}`);
+        }
+        
+        console.log('[Arc Command] Sending bridge response for:', method, result ? (Array.isArray(result) ? `${result.length} items` : 'success') : 'success');
+        window.postMessage({
+          type: 'arc-cmd:bridge-response',
+          id,
+          result
+        }, '*');
+      } catch (error) {
+        console.error('[Arc Command] Bridge request error:', method, error);
+        window.postMessage({
+          type: 'arc-cmd:bridge-response',
+          id,
+          error: error.message
+        }, '*');
+      }
+    }
+  });
 }
 
 // Inject bridge into page context (where overlay runs)
@@ -229,90 +361,6 @@ async function initArcCommandContent() {
     });
   }
 
-  // Handle bridge requests from page context
-  window.addEventListener('message', async (event) => {
-    // Only handle messages from same window
-    if (event.source !== window) return;
-    
-    if (event.data && event.data.type === 'arc-cmd:bridge-request') {
-      const { id, method, args } = event.data;
-      
-      try {
-        let result;
-        switch (method) {
-          case 'storageGet':
-            result = await chrome.storage.sync.get(args[0]);
-            break;
-          case 'storageSet':
-            await chrome.storage.sync.set(args[0]);
-            result = undefined;
-            break;
-          case 'sendMessage':
-            result = await new Promise((resolve, reject) => {
-              chrome.runtime.sendMessage(args[0], (response) => {
-                if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                  resolve(response);
-                }
-              });
-            });
-            break;
-          case 'loadShortcuts':
-            const shortcutsModule = await import(chrome.runtime.getURL('shortcuts.js'));
-            result = {
-              SHORTCUTS: shortcutsModule.SHORTCUTS,
-              SHORTCUT_CATEGORIES: shortcutsModule.SHORTCUT_CATEGORIES
-            };
-            break;
-          case 'getTabs':
-            // Get all tabs in current window, sorted by lastAccessed
-            const tabs = await chrome.tabs.query({ currentWindow: true });
-            result = tabs
-              .map(tab => ({
-                id: tab.id,
-                title: tab.title,
-                url: tab.url,
-                favIconUrl: tab.favIconUrl,
-                active: tab.active,
-                lastAccessed: tab.lastAccessed || 0
-              }))
-              .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
-            break;
-          case 'activateTab':
-            await chrome.tabs.update(args[0], { active: true });
-            result = undefined;
-            break;
-          case 'createTab':
-            // If URL looks like a URL, use it directly, otherwise search
-            const url = args[0];
-            const isUrl = /^(https?:\/\/|chrome:\/\/|about:|file:\/\/)/i.test(url);
-            if (isUrl) {
-              await chrome.tabs.create({ url });
-            } else {
-              // Treat as search query
-              await chrome.tabs.create({ url: `https://www.google.com/search?q=${encodeURIComponent(url)}` });
-            }
-            result = undefined;
-            break;
-          default:
-            throw new Error(`Unknown bridge method: ${method}`);
-        }
-        
-        window.postMessage({
-          type: 'arc-cmd:bridge-response',
-          id,
-          result
-        }, '*');
-      } catch (error) {
-        window.postMessage({
-          type: 'arc-cmd:bridge-response',
-          id,
-          error: error.message
-        }, '*');
-      }
-    }
-  });
 
   // Load overlay when Arc mode is enabled
   if (settings.arcMode && !overlayLoaded) {
