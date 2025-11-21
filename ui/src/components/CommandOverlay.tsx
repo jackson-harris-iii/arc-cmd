@@ -13,9 +13,19 @@ interface CommandOverlayProps {
   onClose: () => void;
 }
 
-export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverlayProps) {
+export function CommandOverlay({
+  shortcuts,
+  categories,
+  onClose,
+}: CommandOverlayProps) {
   const { settings, setFeature, triggerShortcut } = useSettings();
-  const { tabs, loading: tabsLoading, activateTab, createTab } = useTabs();
+  const {
+    tabs,
+    loading: tabsLoading,
+    error: tabsError,
+    activateTab,
+    createTab,
+  } = useTabs();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -69,7 +79,8 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
   // Scroll highlighted item into view
   useEffect(() => {
     if (contentRef.current && highlightedIndex >= 0) {
-      const selector = viewMode === 'tabs' ? '.arc-tab-row' : '.arc-shortcut-row';
+      const selector =
+        viewMode === 'tabs' ? '.arc-tab-row' : '.arc-shortcut-row';
       const items = contentRef.current.querySelectorAll(selector);
       const item = items[highlightedIndex] as HTMLElement;
       if (item) {
@@ -127,7 +138,11 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
             ref={searchInputRef}
             type="text"
             className="arc-overlay-search"
-            placeholder={viewMode === 'tabs' ? 'Search tabs or type URL...' : 'Search shortcuts...'}
+            placeholder={
+              viewMode === 'tabs'
+                ? 'Search tabs or type URL...'
+                : 'Search shortcuts...'
+            }
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -135,7 +150,11 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
             }}
             autoFocus
           />
-          <button className="arc-overlay-close" onClick={onClose} aria-label="Close">
+          <button
+            className="arc-overlay-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>
@@ -152,9 +171,17 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
           {viewMode === 'tabs' ? (
             tabsLoading ? (
               <div className="arc-overlay-empty">Loading tabs...</div>
+            ) : tabsError ? (
+              <div className="arc-overlay-empty">
+                Error loading tabs: {tabsError}
+              </div>
+            ) : tabs.length === 0 ? (
+              <div className="arc-overlay-empty">No tabs open</div>
             ) : filteredTabs.length === 0 ? (
               <div className="arc-overlay-empty">
-                {searchQuery.trim() ? 'No tabs found. Press Enter to open as URL/search.' : 'No tabs found'}
+                {searchQuery.trim()
+                  ? 'No tabs found. Press Enter to open as URL/search.'
+                  : 'No tabs found'}
               </div>
             ) : (
               filteredTabs.map((tab, index) => (
@@ -195,4 +222,3 @@ export function CommandOverlay({ shortcuts, categories, onClose }: CommandOverla
     </div>
   );
 }
-
